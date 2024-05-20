@@ -1,84 +1,126 @@
 package com.example.financitas;
 
+import android.content.ContentValues;
+import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
-
-import com.example.financitas.db.DbHelper;
-import com.google.android.material.snackbar.Snackbar;
+import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ListView;
+import android.widget.Spinner;
+import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import android.view.View;
+import com.example.financitas.db.DbHelper;
+import com.example.financitas.model.Expense;
+import com.example.financitas.model.ExpenseType;
 
-import androidx.navigation.NavController;
-import androidx.navigation.Navigation;
-import androidx.navigation.ui.AppBarConfiguration;
-import androidx.navigation.ui.NavigationUI;
-
-import com.example.financitas.databinding.ActivityMainBinding;
-
-import android.view.Menu;
-import android.view.MenuItem;
-import android.widget.Button;
-import android.widget.Toast;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+    private TextView calculatedIncomeTextView;
+    private TextView calculatedExpensesTextView;
+    private EditText motiveEditText;
+    private EditText amountEditText;
+    private Spinner expenseTypeSpinner;
+    private ListView expenseListView;
 
-    private AppBarConfiguration appBarConfiguration;
-    private ActivityMainBinding binding;
-    Button btnCrear;
+    private List<Expense> expenseList = new ArrayList<>();
+    private DbHelper dbHelper;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        expenseListView.setAdapter(new ExpenseAdapter(this, expenseList));
 
-        setContentView(R.layout.activity_main); // Establecer el layout sin toolbar
+        calculatedIncomeTextView = findViewById(R.id.calculatedIncomeTextView);
+        calculatedExpensesTextView = findViewById(R.id.calculatedExpensesTextView);
+        motiveEditText = findViewById(R.id.motiveEditText);
+        amountEditText = findViewById(R.id.amountEditText);
+        expenseTypeSpinner = findViewById(R.id.expenseTypeSpinner);
+        expenseListView = findViewById(R.id.expenseListView);
 
+        // Set up the spinner
+        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this,
+                R.array.expense_types, android.R.layout.simple_spinner_item);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        expenseTypeSpinner.setAdapter(adapter);
 
-        btnCrear = findViewById(R.id.btnCrear);
+        // Set up the list view
+        expenseListView.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_list_item_1, expenseList));
 
-        btnCrear.setOnClickListener(new View.OnClickListener() {
+        dbHelper = new DbHelper(this);
+        loadExpensesFromDatabase();
+
+        // Set up the add expense button
+        Button addExpenseButton = findViewById(R.id.addExpenseButton);
+        addExpenseButton.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onClick(View v) {
-                // Aquí puedes agregar el código que deseas ejecutar al hacer clic en el botón btnCrear
-                DbHelper dbHelper = new DbHelper(MainActivity.this);
-                SQLiteDatabase db = dbHelper.getWritableDatabase();
-                if (db != null){
-                    Toast.makeText(MainActivity.this, "BASE DE DATOS CREADA", Toast.LENGTH_LONG).show();
-                } else {
-                    Toast.makeText(MainActivity.this, "ERROR AL CREAR BASE DE DATOS", Toast.LENGTH_LONG).show();
-                }
+            public void onClick(View view) {
+                String motive = motiveEditText.getText().toString();
+                double amount = Double.parseDouble(amountEditText.getText().toString());
+                ExpenseType type = ExpenseType.values()[expenseTypeSpinner.getSelectedItemPosition()];
+
+                addExpenseToDatabase(motive, amount, type);
+                loadExpensesFromDatabase();
+                updateCalculatedValues();
+                clearInputFields();
             }
         });
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_main, menu);
-        return true;
+    private void addExpenseToDatabase(String motive, double amount, ExpenseType type) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put("motive", motive);
+        values.put("amount", amount);
+        values.put("type", type.toString());
+        db.insert(DbHelper.TABLE_EXPENSES, null, values);
+        db.close();
     }
 
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
+    private void loadExpensesFromDatabase() {
+        expenseList.clear();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Cursor cursor = db.query(DbHelper.TABLE_EXPENSES, null, null, null, null, null, null);
+        while (cursor.moveToNext()) {
+            int id = cursor.getInt(cursor.getColumnIndex("id"));
+            String motive = cursor.getString(cursor.getColumnIndex("motive"));
+            double amount = cursor.getDouble(cursor.getColumnIndex("amount"));
+            ExpenseType type = ExpenseType.valueOf(cursor.getString(cursor.getColumnIndex("type")));
+            Expense expense = new Expense(id, motive, amount, type);
+            expenseList.add(expense);
+        }
+        cursor.close();
+        db.close();
+        ((ExpenseAdapter) expenseListView.getAdapter()).notifyDataSetChanged();
+    }
 
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
+    private void updateCalculatedValues() {
+        double totalIncome = 0;
+        double totalExpenses = 0;
+
+        for (Expense expense : expenseList) {
+            if (expense.getType() == ExpenseType.INCOME) {
+                totalIncome += expense.getAmount();
+            } else {
+                totalExpenses += expense.getAmount();
+            }
         }
 
-        return super.onOptionsItemSelected(item);
+        calculatedIncomeTextView.setText(String.valueOf(totalIncome));
+        calculatedExpensesTextView.setText(String.valueOf(totalExpenses));
     }
 
-    @Override
-    public boolean onSupportNavigateUp() {
-        NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_content_main);
-        return NavigationUI.navigateUp(navController, appBarConfiguration)
-                || super.onSupportNavigateUp();
+    private void clearInputFields() {
+        motiveEditText.setText("");
+        amountEditText.setText("");
+        expenseTypeSpinner.setSelection(0);
     }
 }
-
