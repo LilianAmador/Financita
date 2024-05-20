@@ -4,6 +4,7 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -36,7 +37,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        expenseListView.setAdapter(new ExpenseAdapter(this, expenseList));
 
         calculatedIncomeTextView = findViewById(R.id.calculatedIncomeTextView);
         calculatedExpensesTextView = findViewById(R.id.calculatedExpensesTextView);
@@ -45,20 +45,13 @@ public class MainActivity extends AppCompatActivity {
         expenseTypeSpinner = findViewById(R.id.expenseTypeSpinner);
         expenseListView = findViewById(R.id.expenseListView);
 
-        // Set up the spinner
-        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this,
-                R.array.expense_types, android.R.layout.simple_spinner_item);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        expenseTypeSpinner.setAdapter(adapter);
-
-        // Set up the list view
-        expenseListView.setAdapter(new ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, expenseList));
-
         dbHelper = new DbHelper(this);
+        String databasePath = getDatabasePath(DbHelper.DATABASE_NAME).getAbsolutePath();
+        Log.d("Database", "Database created at: " + databasePath);
+        expenseListView.setAdapter(new ExpenseAdapter(this, expenseList));
         loadExpensesFromDatabase();
 
-        // Set up the add expense button
+
         Button addExpenseButton = findViewById(R.id.addExpenseButton);
         addExpenseButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -90,12 +83,19 @@ public class MainActivity extends AppCompatActivity {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         Cursor cursor = db.query(DbHelper.TABLE_EXPENSES, null, null, null, null, null, null);
         while (cursor.moveToNext()) {
-            int id = cursor.getInt(cursor.getColumnIndex("id"));
-            String motive = cursor.getString(cursor.getColumnIndex("motive"));
-            double amount = cursor.getDouble(cursor.getColumnIndex("amount"));
-            ExpenseType type = ExpenseType.valueOf(cursor.getString(cursor.getColumnIndex("type")));
-            Expense expense = new Expense(id, motive, amount, type);
-            expenseList.add(expense);
+            int idColumnIndex = cursor.getColumnIndex("id");
+            int motiveColumnIndex = cursor.getColumnIndex("motive");
+            int amountColumnIndex = cursor.getColumnIndex("amount");
+            int typeColumnIndex = cursor.getColumnIndex("type");
+
+            if (idColumnIndex != -1 && motiveColumnIndex != -1 && amountColumnIndex != -1 && typeColumnIndex != -1) {
+                int id = cursor.getInt(idColumnIndex);
+                String motive = cursor.getString(motiveColumnIndex);
+                double amount = cursor.getDouble(amountColumnIndex);
+                ExpenseType type = ExpenseType.valueOf(cursor.getString(typeColumnIndex));
+                Expense expense = new Expense(id, motive, amount, type);
+                expenseList.add(expense);
+            }
         }
         cursor.close();
         db.close();
